@@ -1,0 +1,5 @@
+# Virtual environments named .pyenv
+.pyenv
+
+# IDE files
+.vscode
