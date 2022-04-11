@@ -19,3 +19,10 @@ API. Also provides an example of downloading and very lightly processing scan re
 HTTP API.
 
  - **Python** `01-Python-Live results history`
+
+### Continuous scanning script
+A script that automatically starts an IonVision every X minutes. Uses just the HTTP API. This script
+could be useful on its own or could be expanded to add more functionality related to for example
+results processing.
+
+ - **Python** `02-Python-Continuous scanning`
