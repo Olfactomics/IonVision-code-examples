@@ -17,7 +17,7 @@ This notebook needs the packages "jsonlite", "ggplot2", "viridis", and "data.tab
 # Uncomment the installation lines on the first run if needed.
 #install.packages('jsonlite')
 #install.packages('ggplot2')
-#install.packages('viridis)
+#install.packages('viridis')
 #install.packages('data.table')
 
 library(jsonlite) # For opening json-files
