@@ -27,7 +27,9 @@ results processing.
 
  - **Python** `02-Python-Continuous scanning`
 
-### Data visualisation in R
+### Data visualization in R
 A script that helps the user understand the data structure of IonVision result files. Folder 
 includes example data that can be used with the code, but it can also be adjusted for use 
 with your own results.
+
+ - **R** `03-R-visualization-example`
