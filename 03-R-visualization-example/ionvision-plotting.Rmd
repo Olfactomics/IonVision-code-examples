@@ -84,7 +84,7 @@ usv <- full_data[[2]]
 ucv <- full_data[[3]]
 full_data <- data.frame(full_data[[1]])
 
-knitr::kable(full_data[1:7, c(1, 2, 3, 4, 5, 6)], format="pipe", align="l", caption="Sample data preview", col.names=c("Comment", "Sample humidity", "Sensor flow", "Ambient temperature", "Start time", "First datapoint"))
+knitr::kable(full_data[1:7, c(1, 2, 3, 4, 5, 6)], format="pipe", align="l", caption="Sample data preview", col.names=c("Comment", "Sample humidity (RH)", "Sensor flow (L/min)", "Ambient temperature (°C)", "Start time (24h format)", "First datapoint value (pA)"))
 ```
 
 The data is ordered by the start time, so that the first sample is always the oldest. If there was no comment found in a measurement file the comment is set to "Comment field empty".
@@ -93,7 +93,7 @@ As seen in the table, we load some select environmental parameters, along with t
 
 ## Comments and annotation
 
-When used in a consistent manner, the comments can be used to annotate the measurements for data-analysis. Another possibility is to use external annotations from a .csv file. Let's say we needed the comments to be identical for repeat measurements of background, ethanol, and 2-propanol. As seen in the first table, we have some minor inconsistencies in the commenting. With such a small set, we could edit the comments manually in R or from the .json files, or employ the external annotation.
+When used in a consistent manner, the comments can be used to annotate the measurements for data analysis. Another possibility is to use external annotations from a .csv file. Let's say we needed the comments to be identical for repeat measurements of background, ethanol, and 2-propanol. As seen in the first table, we have some minor inconsistencies in the commenting. With such a small set, we could edit the comments manually in R or from the .json files, or employ the external annotation.
 
 For examples sake, let's load the external annotations found in the sample data folder. We'll also print a table to show a comparison between the original comments and the example annotation file.
 
@@ -112,8 +112,8 @@ Now that we have the data loaded and properly annotated, we can plot the average
 ```{r plotting}
 # For a little bit shorter rows in the section, let's annotate the positive and
 # negative pixels in advance. Top refers to positive and bot to negative.
-top <- 1:10800
-bot <- 10801:21600
+top <- 1:(length(ucv))
+bot <- (length(ucv)+1):(2*length(ucv))
 
 # Go through the unique annotations and plot the mean image for each one. Positive ion sides first.
 for(target in unique(annotations)[[1]]){
