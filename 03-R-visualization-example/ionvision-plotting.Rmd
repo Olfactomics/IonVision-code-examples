@@ -1,0 +1,213 @@
+---
+title: "Olfactomics IonVision Sample data visualization"
+output:
+  word_document: default
+  pdf_document: default
+  html_notebook: default
+  html_document: default
+---
+
+This is an R Notebook that shows how to load and plot IonVision data in R.
+
+# Loading the packages and functions
+
+This notebook needs the packages "jsonlite", "ggplot2", "viridis", and "data.table" to run. The packages only need installation once, and afterwards they can just be loaded with the "library" command.
+
+```{r package installation and functions, message=FALSE, warning=FALSE, include=FALSE}
+# Uncomment the installation lines on the first run if needed.
+#install.packages('jsonlite')
+#install.packages('ggplot2')
+#install.packages('viridis')
+#install.packages('data.table')
+
+library(jsonlite) # For opening json-files
+library(ggplot2) # For plotting
+library(viridis) # For plot colors
+library(data.table) # For data structuring
+
+readfiles=function(path){
+  # List files in the set folder. Only include .json files.
+  files <- list.files(path = path, pattern = ".json", recursive = TRUE)
+  # All spectra are the same shape, so take the Usv and Ucv information from the first file.
+  usv=fromJSON(paste0(path,files[1]))$MeasurementData$Usv
+  ucv=fromJSON(paste0(path,files[1]))$MeasurementData$Ucv
+  # Empty vectors to prepare for loading data.
+  data <- list()
+  
+  # Go through all of the files in the folder
+  for(i in 1:length(files)){
+    # Set the file
+    row <- fromJSON(paste0(path,files[i]))
+    # Combine positive and negative ion sides into one vector
+    measdata <- c(row$MeasurementData$IntensityTop,   row$MeasurementData$IntensityBottom)
+    # Extract start time to order data
+    times <- as.POSIXct(row$StartTime, format="%Y-%m-%dT%H:%M:%S")
+    # Search for quick comment. If no comment is found, set a placeholder.
+    comment <- row[["Comments"]][["_quickComments"]]
+    if(typeof(comment)=="NULL"){comment="Comment field empty"}
+    # Examples for measurement parameters loading: humidity, flow, and temperature.
+    humidity <- row$SystemData$Sample$Humidity$Avg
+    flow <- row$SystemData$Sensor$Flow$Avg
+    temperature <- row$SystemData$Ambient$Temperature$Avg
+    # Combine all extracted data into a list.
+    rowdata <- list(as.list(c(comment, humidity, flow, temperature, as.character(times), measdata)))
+    # Append the data from one file to the list of all data.
+    data <- append(data, rowdata)
+  }
+  data <- rbindlist(data) # Make the list into a data.table
+  # Set names for the first columns for easier identification
+  names(data)[c(1,2,3,4,5)] <- c("comment", "sample_humidity", "circulating_flow", "ambient_temperature", "start_time")
+  # Order the data by start time if there is more than one file.
+  time_order <- order(data$start_time)
+  if(length(time_order)>1){data = data[time_order,]}
+  return(list(data, usv, ucv))   # Return the data and spectrum dimensions as list.
+}
+```
+
+# Setting the directory
+
+We start first by loading the sample data. Link to the data folder can be found at the bottom of this post.\
+[To load the data, first change the folder in the chunk below to the one that holds the .json files you downloaded.]{.underline} Make sure that you use the common slash / instead of the Windows default backslash in the path. Also ensure that you have a slash at the end of the path. For example:
+
+```{r folder}
+path_json = "C:/Users/mainuser/Documents/Olfactomics/IonVision-sample-data/"
+```
+
+# Loading sample data
+
+Now let's see what sort of data we have. The below chunk prints a table of the first few columns and rows of the loaded data-set.
+
+```{r loading}
+# Use the "readfiles" function to extract the measurement data and some environmental parameters from the json files in your data folder.
+full_data <- readfiles(path_json)
+usv <- full_data[[2]]
+ucv <- full_data[[3]]
+full_data <- data.frame(full_data[[1]])
+
+knitr::kable(full_data[1:7, c(1, 2, 3, 4, 5, 6)], format="pipe", align="l", caption="Sample data preview", col.names=c("Comment", "Sample humidity (RH)", "Sensor flow (L/min)", "Ambient temperature (°C)", "Start time (24h format)", "First datapoint value (pA)"))
+```
+
+The data is ordered by the start time, so that the first sample is always the oldest. If there was no comment found in a measurement file the comment is set to "Comment field empty".
+
+As seen in the table, we load some select environmental parameters, along with the comment, start time, and all data from the measurement files. Flows are measured from the sample (the input of the device) and the sensor (the flow through the DMS sensor, which includes the sample flow and the clean circulating flow inside the device). Temperature and humidity are measured from both of the flows and additionally from inside the device to give a reference point to the ambient environment. Maximum, minimum and average values are collected from all these parameters.
+
+## Comments and annotation
+
+When used in a consistent manner, the comments can be used to annotate the measurements for data analysis. Another possibility is to use external annotations from a .csv file. Let's say we needed the comments to be identical for repeat measurements of background, ethanol, and 2-propanol. As seen in the first table, we have some minor inconsistencies in the commenting. With such a small set, we could edit the comments manually in R or from the .json files, or employ the external annotation.
+
+For examples sake, let's load the external annotations found in the sample data folder. We'll also print a table to show a comparison between the original comments and the example annotation file.
+
+```{r annotations}
+# Read the included csv file.
+annotations <- read.table(paste0(path_json,"sample_annotations.csv"),sep=",",header=T, encoding = "UTF-8")
+
+# Knit the original comments and newly loaded annotations and show the table.
+knitr::kable(cbind(as.data.frame(full_data[1:7, 1]),annotations), format="pipe", align="l", caption="Comparison between comments and external annotations", col.names=c("Comment", "Annotation"))
+```
+
+# Data visualization
+
+Now that we have the data loaded and properly annotated, we can plot the average responses for our three classes. IonVision data consists of two spectra, one from the positive ion side and one from the negative. Number of data points of both side is determined by the Usv and Ucv vectors. Usv is the steps taken by the separation voltage, and Ucv by the compensation voltage. Typically, the Usv is plotted as the y-axis and Ucv as the x-axis. The color of the spectrum image plots the intensity of the DMS signal measured in picoamperes. Typically the color scale goes from blue (low signal) to dark red (high signal).
+
+```{r plotting}
+# For a little bit shorter rows in the section, let's annotate the positive and
+# negative pixels in advance. Top refers to positive and bot to negative.
+top <- 1:(length(ucv))
+bot <- (length(ucv)+1):(2*length(ucv))
+
+# Go through the unique annotations and plot the mean image for each one. Positive ion sides first.
+for(target in unique(annotations)[[1]]){
+  targets <- which(target == annotations)
+  # Take only the measurement data from the targeted rows and transform to numeric
+  plotting <- data.frame(apply(full_data[targets,-c(1:5)], 2, function(x) as.numeric(as.character(x))))
+  # Take the average
+  avg_plotting <- unname(colMeans(plotting))
+  # Figure plotted with logarithmic color scale for better contrast.
+  # The +6 is used to set the baseline and data to positive. We use the top
+  # variable made before to only get the positive ion side data into this dataframe
+  df <- data.frame(ucv, usv, avg_plotting[top]+6)
+  # Set easy names for the dataframe
+  colnames(df) <- c("ucv", "usv", "intensity")
+  # Set even breaks for the color scale of the figures
+  my_breaks <- c(5, 20, 150)
+  # Print the figure
+  print(ggplot(df, aes(x = ucv, y = usv, fill = intensity)) +
+    geom_tile() +
+    guides(fill = guide_colourbar(title = "Intensity (pA)")) + # Set colorbar title
+    scale_fill_viridis(option="turbo", trans = "log", # Set colors and logarithmic scale
+                       breaks = my_breaks, labels = my_breaks, # Use our breaks
+                       limits=c(0.9, 550)) + # Set the color limits so all figures have the same scale
+    theme(panel.background = element_blank()) + # Avoid gray backround
+    xlab("Compensation voltage Ucv (V)") + ylab("Separation voltage Usv (V)") + # Set axis labels
+    theme(axis.text=element_text(size=12), # Set text size
+            axis.title=element_text(size=12)) +
+    ggtitle(paste0(target, ", positive ion side"))) # Set main title
+
+}
+
+# Repeat for negative sides.
+for(target in unique(annotations)[[1]]){
+  targets <- which(target == annotations)
+  plotting <- data.frame(apply(full_data[targets,-c(1:5)], 2, function(x) as.numeric(as.character(x))))
+  avg_plotting <- unname(colMeans(plotting))
+  # The 'abs' is used to set the baseline and data to positive.
+  df <- data.frame(ucv, usv, abs(avg_plotting[bot]))
+  colnames(df) <- c("ucv", "usv", "intensity")
+  my_breaks <- c(8, 20, 150)
+  
+  print(ggplot(df, aes(x = ucv, y = usv, fill = intensity)) +
+    geom_tile() +
+    guides(fill = guide_colourbar(title = "Intensity (pA)")) +
+    scale_fill_viridis(option="turbo", trans = "log",
+                       breaks = my_breaks, labels = my_breaks,
+                       limits=c(5, 530)) +
+    theme(panel.background = element_blank()) +
+    xlab("Compensation voltage Ucv (V)") + ylab("Separation voltage Usv (V)") +
+    theme(axis.text=element_text(size=12),
+            axis.title=element_text(size=12)) +
+    ggtitle(paste0(target, ", negative ion side")))
+}
+```
+
+When looking at the images, we can see that there are clear differences between the samples on the positive side, but the negative side seems unaffected by the substances. The side on which a substance is seen depends on the type of ions it produces in the ionization. For example simple carboxylic acids are typically seen on the negative side.
+
+It also looks like our mean background is quite contaminated. The example measurements were performed in a laboratory environment where several experiments take place in close proximity. Let's take a look at the individual measurements to see if the contamination is due to our measurements or the environment.
+
+```{r backgrounds}
+targets <- which("background" == annotations) # Set background measurements as our targets
+# Create a new dataframe only containing the background measurement data as numeric values
+plotting <- data.frame(apply(full_data[targets,-c(1:5)], 2, function(x) as.numeric(as.character(x))))
+  
+for(i in c(1:nrow(plotting))){
+# FIGURE:
+  df <- data.frame(ucv, usv, unname(unlist(plotting[i,top]))+6)
+  colnames(df) <- c("ucv", "usv", "intensity")
+  my_breaks <- c(5, 20, 150)
+  
+  print(ggplot(df, aes(x = ucv, y = usv, fill = intensity)) +
+    geom_tile() +
+    guides(fill = guide_colourbar(title = "Intensity (pA)")) +
+    scale_fill_viridis(option="turbo", trans = "log",
+                       breaks = my_breaks, labels = my_breaks,
+                       limits=c(0.9, 550)) +
+    theme(panel.background = element_blank()) +
+    xlab("Compensation voltage Ucv (V)") + ylab("Separation voltage Usv (V)") +
+    theme(axis.text=element_text(size=12),
+            axis.title=element_text(size=12)) +
+    ggtitle(paste0(full_data$comment[targets[i]], ", positive ion side")))
+
+}
+```
+
+The background seems to stay quite consistent throughout the measurement series. We can then conclude that the contaminants come from either the sampling system or the sampling environment, not from our samples.
+
+In an ideal scenario the background sample taken from ambient air would only consist of the reactant ion peak (RIP), which can be seen in the above images as the red peak leaning towards right. The RIP is the result of water in ambient air. Water molecules are what enables the creation of other ion clusters when sampling in ambient conditions. The disappearing of this peak in the ethanol and 2-propanol spectra implies that all available water has been used in the reactions, meaning that the concentration of our samples was quite high.
+
+Exploring the .json files is in our opinion easiest in a notepad application, for example Notepad++ recognizes .json formatting and allows opening and closing sections of the file for easier reading. To explore a file in R, you can open it with a command like in the chunk below. After loading, the different sections of the data file can be inspected in the R Global Environment in the Data section.
+
+```{r opening a file}
+# Open one json file as "explore" to look through it in the R Environment.
+explore <- fromJSON(paste0(path_json,list.files(path = path_json, pattern = ".json", recursive = TRUE))[1])
+```
+
+We hope that this example notebook has been useful in demonstrating the data format and visualization options of the IonVision!
